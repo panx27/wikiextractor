@@ -58,6 +58,7 @@ discardElements = [
 # wikt: shortcut for Wiktionary
 #
 acceptedNamespaces = ['w', 'wiktionary', 'wikt']
+unacceptedNamespaces = ['category', 'file', 'image']
 
 
 def get_url(urlbase, uid):
@@ -211,7 +212,8 @@ def compact(text, mark_headers=False):
                 title += '.'
 
             if mark_headers:
-                title = "## " + title
+                # title = "## " + title
+                title = f'{m.group(1)}{m.group(2)}{m.group(1)}'
 
             headers[lev] = title
             # drop previous headers
@@ -225,37 +227,39 @@ def compact(text, mark_headers=False):
                 if title[-1] not in '!?':
                     title += '.'
                 page.append(title)
-        # handle indents
-        elif line[0] == ':':
-            # page.append(line.lstrip(':*#;'))
-            continue
-        # handle lists
-        elif line[0] in '*#;:':
-            if Extractor.HtmlFormatting:
-                i = 0
-                for c, n in zip_longest(listLevel, line, fillvalue=''):
-                    if not n or n not in '*#;:':
-                        if c:
-                            page.append(listClose[c])
-                            listLevel = listLevel[:-1]
-                            continue
-                        else:
-                            break
-                    # n != ''
-                    if c != n and (not c or (c not in ';:' and n not in ';:')):
-                        if c:
-                            # close level
-                            page.append(listClose[c])
-                            listLevel = listLevel[:-1]
-                        listLevel += n
-                        page.append(listOpen[n])
-                    i += 1
-                n = line[i - 1]  # last list char
-                line = line[i:].strip()
-                if line:  # FIXME: n is '"'
-                    page.append(listItem[n] % line)
-            else:
-                continue
+        # # handle indents
+        # elif line[0] == ':':
+        #     # page.append(line.lstrip(':*#;'))
+        #     continue
+        # # handle lists
+        # elif line[0] in '*#;:':
+        #     if Extractor.HtmlFormatting:
+        #         i = 0
+        #         for c, n in zip_longest(listLevel, line, fillvalue=''):
+        #             if not n or n not in '*#;:':
+        #                 if c:
+        #                     page.append(listClose[c])
+        #                     listLevel = listLevel[:-1]
+        #                     continue
+        #                 else:
+        #                     break
+        #             # n != ''
+        #             if c != n and (not c or (c not in ';:' and n not in ';:')):
+        #                 if c:
+        #                     # close level
+        #                     page.append(listClose[c])
+        #                     listLevel = listLevel[:-1]
+        #                 listLevel += n
+        #                 page.append(listOpen[n])
+        #             i += 1
+        #         n = line[i - 1]  # last list char
+        #         line = line[i:].strip()
+        #         if line:  # FIXME: n is '"'
+        #             page.append(listItem[n] % line)
+        #     else:
+        #         continue
+        elif line[0] in ';:':
+            page.append(line.lstrip(':;'))
         elif len(listLevel):
             for c in reversed(listLevel):
                 page.append(listClose[c])
@@ -387,12 +391,22 @@ EXT_IMAGE_REGEX = re.compile(
 def replaceExternalLinks(text):
     s = ''
     cur = 0
+    index = 1
     for m in ExtLinkBracketedRegex.finditer(text):
         s += text[cur:m.start()]
         cur = m.end()
 
         url = m.group(1)
         label = m.group(3)
+
+        # label may be empty
+        if not label:
+            label = f'external_link_{index}'
+            index += 1
+
+        # ExtLinkBracketedRegex fails in the following example:
+        # [http://orbis.library.yale.edu [[Yale University]]'s library catalog]
+        label = label.replace('[[', '').replace(']]', '')
 
         # # The characters '<' and '>' (which were escaped by
         # # removeHTMLtags()) should not be included in
@@ -402,11 +416,11 @@ def replaceExternalLinks(text):
         #     link = url[m2.end():] + ' ' + link
         #     url = url[0:m2.end()]
 
-        # If the link text is an image URL, replace it with an <img> tag
-        # This happened by accident in the original parser, but some people used it extensively
-        m = EXT_IMAGE_REGEX.match(label)
-        if m:
-            label = makeExternalImage(label)
+        # # If the link text is an image URL, replace it with an <img> tag
+        # # This happened by accident in the original parser, but some people used it extensively
+        # m = EXT_IMAGE_REGEX.match(label)
+        # if m:
+        #     label = makeExternalImage(label)
 
         # Use the encoded URL
         # This means that users can paste URLs directly into the text
@@ -420,7 +434,8 @@ def replaceExternalLinks(text):
 def makeExternalLink(url, anchor):
     """Function applied to wikiLinks"""
     if Extractor.keepLinks:
-        return '<a href="%s">%s</a>' % (urlencode(url), anchor)
+        # return '<a href="%s">%s</a>' % (urlencode(url), anchor)
+        return '<a href="%s" type="external">%s</a>' % (url, anchor)
     else:
         return anchor
 
@@ -480,17 +495,25 @@ def replaceInternalLinks(text):
     return res + text[cur:]
 
 
+# TO-DO: cross-lingual link, e.g. :zh:八七水災, ru:Алгебра Кодда#Проекция
 def makeInternalLink(title, label):
     colon = title.find(':')
-    if colon > 0 and title[:colon] not in acceptedNamespaces:
+    # # This process doesn't make sense, for example,
+    # # https://en.wikipedia.org/wiki/Survivor:_Winners_at_War
+    # if colon > 0 and title[:colon] not in acceptedNamespaces:
+    #     return ''
+    if colon > 0 and title[:colon].lower() in unacceptedNamespaces:
         return ''
     if colon == 0:
         # drop also :File:
         colon2 = title.find(':', colon + 1)
         if colon2 > 1 and title[colon + 1:colon2] not in acceptedNamespaces:
-            return ''
+            # return ''
+            return label
     if Extractor.keepLinks:
-        return '<a href="%s">%s</a>' % (urlencode(title), label)
+        # return '<a href="%s">%s</a>' % (urlencode(title), label)
+        # return '[[%s|%s]]' % (title, label)
+        return '<a href="%s" type="internal">%s</a>' % (title, label)
     else:
         return label
 
@@ -664,10 +687,13 @@ ignoredTags = (
     'abbr', 'b', 'big', 'blockquote', 'center', 'cite', 'div', 'em',
     'font', 'h1', 'h2', 'h3', 'h4', 'hiero', 'i', 'kbd', 'nowiki',
     'p', 'plaintext', 's', 'span', 'strike', 'strong',
-    'sub', 'sup', 'tt', 'u', 'var'
+    'sub', 'sup', 'tt', 'u', 'var', 'code'
 )
 
-placeholder_tags = {'math': 'formula', 'code': 'codice'}
+# placeholder_tags = {'math': 'formula', 'code': 'codice'}
+# Anchor link may have <code> tab, for example,
+# [[Select (SQL)|<code>DISTINCT</code> keyword]]
+placeholder_tags = {'math': 'formula'}
 
 
 def normalizeTitle(title):
@@ -797,7 +823,7 @@ class Extractor():
     """
     ##
     # Whether to preserve links in output
-    keepLinks = False
+    keepLinks = True
 
     ##
     # Whether to preserve section titles
