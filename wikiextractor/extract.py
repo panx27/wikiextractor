@@ -497,6 +497,7 @@ def replaceInternalLinks(text):
 
 # TO-DO: cross-lingual link, e.g. :zh:八七水災, ru:Алгебра Кодда#Проекция
 def makeInternalLink(title, label):
+    label = label.strip()
     colon = title.find(':')
     # # This process doesn't make sense, for example,
     # # https://en.wikipedia.org/wiki/Survivor:_Winners_at_War
