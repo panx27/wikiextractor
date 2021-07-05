@@ -497,6 +497,7 @@ def replaceInternalLinks(text):
 
 # TO-DO: cross-lingual link, e.g. :zh:八七水災, ru:Алгебра Кодда#Проекция
 def makeInternalLink(title, label):
+    title = title.strip()
     label = label.strip()
     colon = title.find(':')
     # # This process doesn't make sense, for example,
